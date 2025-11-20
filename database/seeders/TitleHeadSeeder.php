@@ -73,7 +73,7 @@ class TitleHeadSeeder extends Seeder
         }
 
         TitleHead::insert([
-            'no' => '13',
+            'no' => null,
             'name' => 'Suspense',
             'type' => 'suspense',
             'sort_order' => null,

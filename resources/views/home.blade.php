@@ -248,7 +248,7 @@
                         <div class="mt-8">
                             <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">Revenue Schedule</h3>
                             <p class="text-gray-600 dark:text-gray-400 text-sm mb-3">Upload your revenue schedule HTML file</p>
-                            <form action="{{ url('/upload-revenue') }}" method="POST" enctype="multipart/form-data" class="block">
+                            <form action="{{ route('reports.upload.revenue-schedule') }}" method="POST" enctype="multipart/form-data" class="block">
                                 @csrf
 
                                 <!-- year select (plain year values) -->
@@ -281,7 +281,7 @@
 
                                 <!-- file input -->
                                 <label class="relative group cursor-pointer block">
-                                    <input type="file" name="revenue_file" accept=".html,.htm" class="hidden" id="revenue-file"/>
+                                    <input type="file" name="revenue_schedule_file" accept=".html,.htm" class="hidden" id="revenue-schedule-file"/>
                                     <div class="flex items-center justify-center px-6 py-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg group-hover:border-purple-500 dark:group-hover:border-purple-400 transition-colors">
                                         <span class="text-sm text-gray-600 dark:text-gray-400 group-hover:text-purple-500 dark:group-hover:text-purple-400">
                                             Choose file
@@ -289,15 +289,15 @@
                                     </div>
                                 </label>
 
-                                <div class="mt-3 text-sm text-gray-700 dark:text-gray-300" id="revenue-file-name">
-                                    @if(session('revenue_filename'))
-                                        Selected: {{ session('revenue_filename') }}
+                                <div class="mt-3 text-sm text-gray-700 dark:text-gray-300" id="revenue-schedule-file-name">
+                                    @if(session('revenue-schedule-file-name'))
+                                        Selected: {{ session('revenue-schedule-file-name') }}
                                     @else
                                         No file chosen
                                     @endif
                                 </div>
 
-                                @error('revenue_file')
+                                @error('revenue_schedule_file')
                                     <div class="mt-2 text-xs text-red-600">{{ $message }}</div>
                                 @enderror
 
@@ -378,7 +378,7 @@
                 const map = [
                     { inputId: 'rar-file', nameId: 'rar-file-name' },
                     { inputId: 'bg-file', nameId: 'bg-file-name' },
-                    { inputId: 'revenue-file', nameId: 'revenue-file-name' },
+                    { inputId: 'revenue-schedule-file', nameId: 'revenue-schedule-file-name' },
                 ];
 
                 map.forEach(({ inputId, nameId }) => {

@@ -77,4 +77,32 @@ class ReportController extends Controller
 
         return $this->reportWriterService->export($request->input('year'), $request->input('month'));
     }
+
+    public function uploadRevenueSchedule(Request $request)
+    {
+        $request->validate([
+            'revenue_schedule_file' => 'required|file',
+            'year' => 'required|string',
+            'month' => 'required|string',
+        ]);
+
+        $target = $this->createTempUploadFile($request->file('revenue_schedule_file'));
+
+        try {
+            $this->reportService->uploadRevenueSchedule(
+                $target,
+                $request->input(key: 'year'),
+                $request->input('month')
+            );
+        } catch( \Exception $e) {
+            // Handle exception if needed
+            Log::error('Error uploading Revenue Schedule report: ' . $e->getMessage());
+            throw $e;
+        }
+         finally {
+            $this->cleanupTempFile($target);
+        }
+
+        return to_route('home')->with('success', 'Revenue Schedule Report uploaded successfully.');
+    }
 }

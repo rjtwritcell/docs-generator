@@ -14,5 +14,6 @@ Route::controller(ReportController::class)
     
     Route::post('upload-rar', 'uploadRAR')->name('upload.rar');
     Route::post('upload-bg', 'uploadBG')->name('upload.bg');
+    Route::post('upload-revenue-schedule', 'uploadRevenueSchedule')->name('upload.revenue-schedule');
     Route::post('download', 'download')->name('download');
 });

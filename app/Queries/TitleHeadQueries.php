@@ -41,4 +41,35 @@ class TitleHeadQueries
             ->get();
     }
 
+    public function getSuspenseTitleHead(): TitleHead
+    {
+        return TitleHead::query()
+            ->where('type', 'suspense')
+            ->first();
+    }
+
+    public function getSuspenseTitleHeadWithValues(string $currentFinancialYear, string $previousFinancialYear, string $month): TitleHead
+    {
+        return TitleHead::query()
+             ->with(['titleHeadValues' => function ($query) use ($currentFinancialYear, $previousFinancialYear, $month) {
+                $query->where(function ($q) use ($previousFinancialYear, $month) {
+                    $q->where('type', 'actual')
+                    ->where('financial_year', $previousFinancialYear)
+                    ->where('month', 'MAR');
+                })->orWhere(function ($q) use ($currentFinancialYear, $month) {
+                    $q->where('type', 'budget-grant')
+                    ->where('financial_year', $currentFinancialYear);
+                })->orWhere(function ($q) use ($previousFinancialYear, $month) {
+                    $q->where('type', 'actual')
+                    ->where('financial_year', $previousFinancialYear)
+                    ->where('month', $month);
+                })->orWhere(function ($q) use ($currentFinancialYear, $month) {
+                    $q->where('type', 'actual')
+                    ->where('financial_year', $currentFinancialYear)
+                    ->where('month', $month);
+                });
+            }])
+            ->where('type', 'suspense')
+            ->first();
+    }
 }
