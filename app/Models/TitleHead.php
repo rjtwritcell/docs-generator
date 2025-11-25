@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TitleHead extends Model
 {
@@ -12,8 +13,14 @@ class TitleHead extends Model
         'name',
         'type',
         'notes',
-        'sort_order'
+        'sort_order',
+        'excel_table'
     ];
+
+    public function reportTables()
+    {
+        return $this->belongsToMany(ReportTable::class, 'report_table_title_head')->withTimestamps();
+    }
     
     public function titleHeadValues()
     {

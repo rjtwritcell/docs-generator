@@ -2,6 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Enums\ReportTableEnum;
+use App\Models\ReportTable;
 use App\Models\TitleHead;
 use Carbon\Carbon;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
@@ -62,17 +64,21 @@ class TitleHeadSeeder extends Seeder
         ];
 
         // Demands
+        $reportTable = ReportTable::where('name', ReportTableEnum::DEMAND_WISE->value)->first();
         foreach ($demands as $key => $demand) {
-            TitleHead::insert([
+            $titleHead = TitleHead::create([
                 ...$demand,
                 'type' => 'demand',
                 'sort_order' => ($key + 1),
                 'created_at' => Carbon::now()->format('Y-m-d H:i:s'),
                 'updated_at' => Carbon::now()->format('Y-m-d H:i:s'),
             ]);
+            $reportTable->titleHeads()->attach($titleHead->id);
         }
 
-        TitleHead::insert([
+        $reportTable = ReportTable::where('name', ReportTableEnum::DEMAND_WISE->value)->first();
+
+        $titleHead = TitleHead::create([
             'no' => null,
             'name' => 'Suspense',
             'type' => 'suspense',
@@ -80,7 +86,9 @@ class TitleHeadSeeder extends Seeder
             'created_at' => Carbon::now()->format('Y-m-d H:i:s'),
             'updated_at' => Carbon::now()->format('Y-m-d H:i:s'),
         ]);
+        $reportTable->titleHeads()->attach($titleHead->id);
 
+        $reportTable = ReportTable::where('name', ReportTableEnum::PU_WISE->value)->first();
         $puPartA = [
             [
                 'no' => '01',
@@ -170,13 +178,14 @@ class TitleHeadSeeder extends Seeder
 
         // PU Part A
         foreach ($puPartA as $key => $pu) {
-            TitleHead::insert([
+            $titleHead = TitleHead::create([
                 ...$pu,
                 'type' => 'pu',
                 'sort_order' => 'A' . ($key + 1),
                 'created_at' => Carbon::now()->format('Y-m-d H:i:s'),
                 'updated_at' => Carbon::now()->format('Y-m-d H:i:s'),
             ]);
+            $reportTable->titleHeads()->attach($titleHead->id);
         }
 
         $puPartB = [
@@ -268,21 +277,95 @@ class TitleHeadSeeder extends Seeder
                 'no' => '99',
                 'name' => 'Other Expenses',
             ],
-            [
-                'no' => '98',
-                'name' => 'Credits',
-            ]
         ];
 
         // PU Part B
         foreach ($puPartB as $key => $pu) {
-            TitleHead::insert([
+            $titleHead = TitleHead::create([
                 ...$pu,
                 'type' => 'pu',
                 'sort_order' => 'B' . ($key + 1),
                 'created_at' => Carbon::now()->format('Y-m-d H:i:s'),
                 'updated_at' => Carbon::now()->format('Y-m-d H:i:s'),
             ]);
+            $reportTable->titleHeads()->attach($titleHead->id);
+        }
+
+        // PU Part C
+        $titleHead = TitleHead::create([
+            'no' => null,
+            'name' => 'Credits',
+            'type' => 'pu',
+            'sort_order' => 'C1',
+            'created_at' => Carbon::now()->format('Y-m-d H:i:s'),
+            'updated_at' => Carbon::now()->format('Y-m-d H:i:s'),
+        ]);
+        $reportTable->titleHeads()->attach($titleHead->id);
+
+        
+        $this->upsertData(ReportTableEnum::MAJOR_EXPENDITURE, [
+            [
+                'no' => '27 - I',
+                'name' => 'Stock (Excluding PU-27 of Demand No.10)',
+            ],
+            [
+                'no' => '28',
+                'name' => 'Cost of materials - Direct purchase',
+            ],
+            [
+                'no' => '32',
+                'name' => 'Contractual payments',
+            ],
+            [
+                'no' => '99',
+                'name' => 'Other Expenses',
+            ],
+        ]);
+
+        $this->upsertData(ReportTableEnum::CONTROL_OVER_TA_AND_OT, [
+            [
+                'no' => '11',
+                'name' => 'Overtime allowance',
+            ],
+            [
+                'no' => '16',
+                'name' => 'Travelling expenses',
+            ],
+        ]);
+
+        $this->upsertData(ReportTableEnum::POSITION_OF_CONTROLLABLE_PUs, [
+            [
+                'no' => '27 - I',
+                'name' => 'Stock (Excluding PU-27 of Demand No.10)',
+            ],
+            [
+                'no' => '30 - I',
+                'name' => 'NT Elect. (Excluding PU-30 of Demand No.10)',
+            ],
+        ]);
+    }
+
+
+    private function upsertData(ReportTableEnum $reportTableEnum, array $data): void
+    {
+        $reportTable = ReportTable::where('name', $reportTableEnum->value)->first();
+
+        foreach ($data as $key => $item) {
+            $titleHead = TitleHead::firstOrCreate(
+                [
+                    'no' => $item['no'],
+                    'name' => $item['name'],
+                    'type' => 'pu',
+                ],
+                [
+                    'name' => $item['name'],
+                    'sort_order' => $item['sort_order'] ?? ($key + 1),
+                    'created_at' => Carbon::now()->format('Y-m-d H:i:s'),
+                    'updated_at' => Carbon::now()->format('Y-m-d H:i:s'),
+                ]
+            );
+
+            $reportTable->titleHeads()->attach($titleHead->id);
         }
     }
 }

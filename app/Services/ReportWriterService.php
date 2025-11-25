@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\ReportTableEnum;
 use App\Models\TitleHead;
 use App\Queries\TitleHeadQueries;
 use App\Queries\TitleHeadValueQueries;
@@ -17,10 +18,13 @@ use Illuminate\Support\Facades\Response;
 use OpenSpout\Common\Entity\Cell;
 use OpenSpout\Common\Entity\Style\CellAlignment;
 use OpenSpout\Writer\Common\Creator\Style\StyleBuilder;
+use SebastianBergmann\CodeCoverage\Report\Xml\Report;
 
 class ReportWriterService
 {
     protected Writer $writer;
+    protected array $styles = [];
+    protected array $computedValues = [];
 
     public function __construct(
         protected TitleHeadQueries $titleHeadQueries,
@@ -30,17 +34,19 @@ class ReportWriterService
         $this->writer = new Writer();
     }
 
-    public function export(string $financialYear, string $financialMonth)
+    public function export(string $financialYear, string $financialMonth): void
     {
         try {
-
-            $computedFisacalValues = $this->financialYearService->computeFiscalValues($financialYear, $financialMonth);
-
-            $this->prepareDemandWiseOrdinaryWorkingExpensesTable(
-                $financialMonth,
-                $computedFisacalValues
-            );
-
+            $this->computedValues = $this->financialYearService->computeFiscalValues($financialYear, $financialMonth);
+            $this->initializeStyles();
+            
+            $fileName = "budget_report-" . rand(1, 2000000000) . ".xlsx";
+            $this->writer->openToBrowser($fileName);
+            
+            $this->prepareDemandWise($financialMonth);
+            $this->preparePUWise($financialMonth);
+            $this->prepareMajorPUWise($financialMonth);
+            $this->prepareTAAndOTTable($financialMonth);
 
             $this->writer->close();
         } catch (\Throwable $th) {
@@ -48,348 +54,552 @@ class ReportWriterService
         }
     }
 
-    public function prepareDemandWiseOrdinaryWorkingExpensesTable(string $financialMonth, array $computedFisacalValues)
+    // ============================================================
+    // STYLE INITIALIZATION
+    // ============================================================
+    private function initializeStyles(): void
     {
-        $demandWiseOrdinaryWorkExpenses = $this->titleHeadQueries->ordinaryWorkExpense(
-            $computedFisacalValues['currentFinancialYear'],
-            $computedFisacalValues['previousFinancialYear'],
-            $financialMonth
-        );
+        // Professional color palette
+        $titleBg = Color::rgb(41, 84, 130);          // Deep blue
+        $headerBg = Color::rgb(79, 129, 189);        // Medium blue
+        $rowAlt1  = Color::rgb(217, 225, 242);       // Light blue
+        $rowAlt2  = Color::rgb(242, 242, 242);       // Light gray
+        $totalBg  = Color::rgb(12, 118, 158);        // Green
+        $groupBg  = Color::rgb(192, 192, 192);       // Silver
+        
+        $borderAll = $this->createBorder();
 
-        $suspenseTitleHeadValues = $this->titleHeadQueries->getSuspenseTitleHeadWithValues(
-            $computedFisacalValues['currentFinancialYear'],
-            $computedFisacalValues['previousFinancialYear'],
-            $financialMonth
-        );
+        $this->styles = [
+            'title' => $this->createTitleStyle($titleBg, $borderAll),
+            'groupTitle' => $this->createGroupTitleStyle($groupBg, $borderAll),
+            'header' => $this->createHeaderStyle($headerBg, $borderAll),
+            'alias' => $this->createAliasStyle($headerBg, $borderAll),
+            'row1' => $this->createDataRowStyle($rowAlt1, $borderAll),
+            'row2' => $this->createDataRowStyle($rowAlt2, $borderAll),
+            'total' => $this->createTotalRowStyle($totalBg, $borderAll),
+            'firstCell' => $this->createFirstCellStyle($borderAll),
+            'numericCenter' => $this->createNumericCenterStyle($borderAll),
+        ];
+    }
 
-        $mappedOrdinaryWorkExpenses = collect();
-
-        // ---------------------------------------
-        // Colors
-        // ---------------------------------------
-        $headerBg = Color::rgb(216, 178, 92);       // beige
-        $rowAlt1  = Color::rgb(247, 229, 222);       // lighter beige
-        $rowAlt2  = Color::rgb(239, 224, 189);       // slightly darker beige
-
-        // ---------------------------------------
-        // Borders
-        // ---------------------------------------
-        $borderAll = new Border(
+    private function createBorder(): Border
+    {
+        return new Border(
             new BorderPart(Border::TOP,    Color::BLACK, Border::WIDTH_THIN, Border::STYLE_SOLID),
             new BorderPart(Border::RIGHT,  Color::BLACK, Border::WIDTH_THIN, Border::STYLE_SOLID),
             new BorderPart(Border::BOTTOM, Color::BLACK, Border::WIDTH_THIN, Border::STYLE_SOLID),
             new BorderPart(Border::LEFT,   Color::BLACK, Border::WIDTH_THIN, Border::STYLE_SOLID),
         );
+    }
 
-        // ---------------------------------------
-        // STYLES
-        // ---------------------------------------
-        $titleStyle = (new Style())
-            ->setFontBold()
+    private function createTitleStyle(Color|string $bgColor, Border $border): Style
+    {
+        return (new Style())
             ->setFontSize(16)
-            ->setFontName('Montserrat')
-            ->setShouldWrapText()
-            ->setBackgroundColor($headerBg)
-            ->setCellAlignment(CellAlignment::CENTER)
-            ->setBorder($borderAll);
-
-        $headerStyle = (new Style())
+            ->setFontName('Calibri')
             ->setFontBold()
+            ->setShouldWrapText()
+            ->setFontColor(Color::WHITE)
+            ->setBackgroundColor($bgColor)
+            ->setCellAlignment(CellAlignment::CENTER)
+            ->setCellVerticalAlignment(CellAlignment::CENTER)
+            ->setBorder($border);
+    }
+
+    private function createGroupTitleStyle(Color|string $bgColor, Border $border): Style
+    {
+        return (new Style())
             ->setFontSize(12)
-            ->setFontName('Montserrat')
-            ->setShouldWrapText()
-            ->setBackgroundColor($headerBg)
-            ->setCellAlignment(CellAlignment::CENTER)
-            ->setCellVerticalAlignment(CellAlignment::CENTER)
-            ->setBorder($borderAll);
-
-        $aliasRow = (new Style())
+            ->setFontName('Calibri')
             ->setFontBold()
-            ->setFontSize(10)
-            ->setFontName('Montserrat')
             ->setShouldWrapText()
-            ->setBackgroundColor($headerBg)
+            ->setFontColor(Color::BLACK)
+            ->setBackgroundColor($bgColor)
+            ->setCellAlignment(CellAlignment::LEFT)
+            ->setCellVerticalAlignment(CellAlignment::CENTER)
+            ->setBorder($border);
+    }
+
+    private function createHeaderStyle(Color|string $bgColor, Border $border): Style
+    {
+        return (new Style())
+            ->setFontSize(11)
+            ->setFontName('Calibri')
+            ->setFontBold()
+            ->setShouldWrapText()
+            ->setFontColor(Color::WHITE)
+            ->setBackgroundColor($bgColor)
             ->setCellAlignment(CellAlignment::CENTER)
             ->setCellVerticalAlignment(CellAlignment::CENTER)
-            ->setBorder($borderAll);
+            ->setBorder($border);
+    }
 
-        $rowStyle1 = (new Style())
-            ->setFontName('Montserrat')
+    private function createAliasStyle(Color|string $bgColor, Border $border): Style
+    {
+        return (new Style())
+            ->setFontSize(9)
+            ->setFontName('Calibri')
+            ->setFontBold()
             ->setShouldWrapText()
-            ->setBorder($borderAll)
+            ->setFontColor(Color::BLACK)
+            ->setBackgroundColor(Color::rgb(220, 230, 242))
+            ->setCellAlignment(CellAlignment::CENTER)
             ->setCellVerticalAlignment(CellAlignment::CENTER)
-            ->setFormat('00.00')
-            ->setBackgroundColor($rowAlt1);
+            ->setBorder($border);
+    }
 
-        $rowStyle2 = (new Style())
-            ->setFontName('Montserrat')
+    private function createDataRowStyle(Color|string $bgColor, Border $border): Style
+    {
+        return (new Style())
+            ->setFontSize(10)
+            ->setFontName('Calibri')
             ->setShouldWrapText()
-            ->setBorder($borderAll)
-            ->setFormat('00.00')
+            ->setBorder($border)
             ->setCellVerticalAlignment(CellAlignment::CENTER)
-            ->setBackgroundColor($rowAlt2);
+            ->setFormat('0.00')
+            ->setBackgroundColor($bgColor);
+    }
 
-        // ---------------------------------------
-        // START EXCEL OUTPUT
-        // ---------------------------------------
-        $fileName = "budget_report-" . rand(1, 2000000000) . ".xlsx";
+    private function createTotalRowStyle(Color|string $bgColor, Border $border): Style
+    {
+        return (new Style())
+            ->setFontSize(10)
+            ->setFontName('Calibri')
+            ->setFontBold()
+            ->setShouldWrapText()
+            ->setFontColor(Color::WHITE)
+            ->setBorder($border)
+            ->setCellVerticalAlignment(CellAlignment::CENTER)
+            ->setFormat('0.00')
+            ->setBackgroundColor($bgColor);
+    }
 
-        $this->writer->openToBrowser($fileName);
+    private function createFirstCellStyle(Border $border): Style
+    {
+        return (new Style())
+            ->setFontSize(10)
+            ->setFontName('Calibri')
+            ->setFontBold()
+            ->setCellAlignment(CellAlignment::LEFT)
+            ->setCellVerticalAlignment(CellAlignment::CENTER)
+            ->setBorder($border);
+    }
 
-        // Set column widths
+    private function createNumericCenterStyle(Border $border): Style
+    {
+        return (new Style())
+            ->setFontSize(10)
+            ->setFontName('Calibri')
+            ->setBorder($border)
+            ->setCellAlignment(CellAlignment::RIGHT)
+            ->setCellVerticalAlignment(CellAlignment::CENTER)
+            ->setFormat('0.00');
+    }
+
+    // ============================================================
+    // DEMAND WISE SECTION
+    // ============================================================
+    private function prepareDemandWise(string $financialMonth): void
+    {
+        $demandWiseExpenses = $this->titleHeadQueries->getDemandWiseOrdinaryWorkExpense(
+            $this->computedValues['currentFinancialYear'],
+            $this->computedValues['previousFinancialYear'],
+            $financialMonth
+        );
+
+        $suspenseValues = $this->titleHeadQueries->getSuspenseTitleHeadWithValues(
+            $this->computedValues['currentFinancialYear'],
+            $this->computedValues['previousFinancialYear'],
+            $financialMonth
+        );
+
+        $this->writeDemandWiseHeader();
+        
+        $mapped = $this->writeDataRows($demandWiseExpenses, $financialMonth, ReportTableEnum::DEMAND_WISE);
+        $this->writer->addRow($this->mapSummationRow('Total', $this->styles['row2'], $this->styles['firstCell'], $mapped, $financialMonth));
+
+        $suspenseResult = $this->calculateAndMapRow($suspenseValues, $financialMonth, $this->styles['row1'], $this->styles['firstCell'], ReportTableEnum::DEMAND_WISE);
+        $mapped->push($suspenseResult['mappedValues']);
+        $this->writer->addRow($suspenseResult['row']);
+
+        $this->writer->addRow($this->mapSummationRow('Gross Total', $this->styles['row2'], $this->styles['firstCell'], $mapped, $financialMonth));
+    }
+
+    private function writeDemandWiseHeader(): void
+    {
         $options = $this->writer->getOptions();
-
-        // ---------------------------------------
-        // Title Rows (MERGED)
-        // ---------------------------------------
+        
         $this->writer->addRow(
-            Row::fromValues(
-                [
-                    "Demand wise Ordinary Working Expenses (Fig in Crores)",
-                ],
-                $titleStyle
-            )
+            Row::fromValues(["DEMAND WISE ORDINARY WORKING EXPENSES (Figures in Crores)"], $this->styles['title'])
         );
-        $options->mergeCells(0, 1, 10, 1); // Merge first row
+        $options->mergeCells(0, 1, 10, 1);
 
-        $options->setColumnWidth(22, 1);  // Demand No.
-        $options->setColumnWidth(8, 2);  // Actual PFY (MAR PFY)
-        $options->setColumnWidth(8, 3);  // B.G. CFY
-        $options->setColumnWidth(8, 4);  // Actual PFYM
-        $options->setColumnWidth(8, 5);  // B.P. CFYM
-        $options->setColumnWidth(8, 6);  // Actual CFYM
-        $options->setColumnWidth(8, 7);  // Variation (6-5)
+        $this->setColumnWidths($options);
+
+        $this->writer->addRow(Row::fromValues($this->getHeaders(ReportTableEnum::DEMAND_WISE), $this->styles['header']));
         $options->mergeCells(6, 2, 7, 2);
-        $options->setColumnWidth(8, 9);  // Variation (6-4)
         $options->mergeCells(8, 2, 9, 2);
-        $options->setColumnWidth(40, 11);  // Remarks
 
-        $this->writer->addRow(
-            Row::fromValues(
-                [
-                    "Demand No.",
-                    "Actual " . $computedFisacalValues['previousFinancialYear'],
-                    "B.G. " . $computedFisacalValues['currentFinancialYear'],
-                    "Actual " . $computedFisacalValues['previousFinancialYearMonth'],
-                    "B.P. " . $computedFisacalValues['currentFinancialYearMonth'],
-                    "Actual Exp " . $computedFisacalValues['currentFinancialYearMonth'],
-                    "Variation (6-5)",
-                    null,
-                    "Variation (6-4)",
-                    null,
-                    "Remarks"
-                ],
-                $headerStyle
-            )
-        );
-        // ---------------------------------------
-        // Header Row
-        // ---------------------------------------
-        $this->writer->addRow(
-            Row::fromValues([
-                1,
-                2,
-                3,
-                4,
-                5,
-                6,
-                7,
-                "% Variation",
-                8,
-                "% Variation",
-                9,
-            ], $aliasRow)
-        );
-
-        $firstCellStyle = (new Style())
-            ->setFontBold();
-
-        $mappedOrdinaryWorkExpenses = $this->calculateAndMapRows(
-            $demandWiseOrdinaryWorkExpenses,
-            $computedFisacalValues,
-            $financialMonth,
-            $rowStyle1,
-            $rowStyle2,
-            $firstCellStyle,
-        );
-
-        $row = $this->mapSummationRow(
-            'Total',
-            $rowStyle2,
-            $firstCellStyle,
-            $mappedOrdinaryWorkExpenses,
-            $financialMonth
-        );
-
-        $this->writer->addRow($row);
-
-        $result = $this->calculateAndMapRow(
-            $suspenseTitleHeadValues,
-            $computedFisacalValues,
-            $financialMonth,
-            $rowStyle1,
-            $firstCellStyle
-        );
-
-        $mappedOrdinaryWorkExpenses->push($result['mappedValues']);
-
-        $this->writer->addRow($result['row']);
-
-        Log::info('Mapped Suspense Title Head Values: ', $mappedOrdinaryWorkExpenses->toArray());
-
-        $row = $this->mapSummationRow(
-            'Gross Total',
-            $rowStyle2,
-            $firstCellStyle,
-            $mappedOrdinaryWorkExpenses,
-            $financialMonth
-        );
-
-        $this->writer->addRow($row);
+        $this->writer->addRow(Row::fromValues($this->getAliasRow(ReportTableEnum::DEMAND_WISE), $this->styles['alias']));
     }
 
-    private function getAmount(Collection $titleHeadValues, string $type, string  $financialYear, string $month = null)
+    private function getHeaders(ReportTableEnum $reportTableEnum): array
     {
-        $query = $titleHeadValues->where('type', $type)
-            ->where('financial_year', $financialYear);
-
-        if ($month) {
-            $query = $query->where('month', $month);
-        }
-
-        $record = $query->first();
-
-        return $record ? (float) $record->amount : 0;
+        return match ($reportTableEnum) {
+            ReportTableEnum::DEMAND_WISE => [
+                "Demand No.",
+                "Actual " . $this->computedValues['previousFinancialYear'],
+                "B.G. " . $this->computedValues['currentFinancialYear'],
+                "Actual " . $this->computedValues['previousFinancialYearMonth'],
+                "B.P. " . $this->computedValues['currentFinancialYearMonth'],
+                "Actual Exp " . $this->computedValues['currentFinancialYearMonth'],
+                "Variation (6-5)",
+                null,
+                "Variation (6-4)",
+                null,
+                "Remarks"
+            ],
+            ReportTableEnum::PU_WISE => [
+                "PU No.",
+                "Actual " . $this->computedValues['previousFinancialYear'],
+                "B.G. " . $this->computedValues['currentFinancialYear'],
+                "Actual " . $this->computedValues['previousFinancialYearMonth'],
+                "B.P. " . $this->computedValues['currentFinancialYearMonth'],
+                "Actual " . $this->computedValues['currentFinancialYearMonth'],
+                "Variation (6-5)",
+                null,
+                "Variation (6-4)",
+                null,
+                "Remarks"
+            ],
+            ReportTableEnum::MAJOR_EXPENDITURE, ReportTableEnum::CONTROL_OVER_TA_AND_OT => [
+                "PU",
+                "B.G. " . $this->computedValues['currentFinancialYear'],
+                "Actual " . $this->computedValues['previousFinancialYearMonth'],
+                "B.P. " . $this->computedValues['currentFinancialYearMonth'],
+                "Actual " . $this->computedValues['currentFinancialYearMonth'],
+                "Variation (5-3)",
+                "Variation % (6/3*100)",
+                "Remarks"
+            ],
+        };
     }
 
-    private function calculateAndMapRow(TitleHead $titleHead, array $computedFisacalValues, string $financialMonth, Style $rowStyle, Style $firstCellStyle): array
+    private function getAliasRow(ReportTableEnum $reportTableEnum): array
     {
+        return match ($reportTableEnum) {
+            ReportTableEnum::DEMAND_WISE => [1, 2, 3, 4, 5, 6, 7, "% Variation", 8, "% Variation", 9],
+            ReportTableEnum::PU_WISE => [1, 2, 3, 4, 5, 6, 7, "% Variation", 8, "% Variation", 9],
+            ReportTableEnum::MAJOR_EXPENDITURE, ReportTableEnum::CONTROL_OVER_TA_AND_OT => [1, 2, 3, 4, 5, 6, 7, 8],
+        };
 
-        $actualPreviousFinancialYearMar =
-            $this->getAmount(
-                $titleHead->titleHeadValues,
-                'actual',
-                $computedFisacalValues['previousFinancialYear'],
-                'MAR'
-            );
-        $currentYearBudgetGrant =
-            $this->getAmount(
-                $titleHead->titleHeadValues,
-                'budget-grant',
-                $computedFisacalValues['currentFinancialYear']
-            );
-
-        $actualPreviousYearSelectedMonth =
-            $this->getAmount(
-                $titleHead->titleHeadValues,
-                'actual',
-                $computedFisacalValues['previousFinancialYear'],
-                $financialMonth
-            );
-
-        $budgetProportionateCurrentYear = round(($currentYearBudgetGrant / 12) * $this->financialYearService->fyMonthIndex($financialMonth), 2);
-
-        $actualCurrentYearSelectedMonth =
-            $this->getAmount(
-                $titleHead->titleHeadValues,
-                'actual',
-                $computedFisacalValues['currentFinancialYear'],
-                $financialMonth
-            );
-
-        $variation7 = round($actualCurrentYearSelectedMonth - $budgetProportionateCurrentYear, 2);
-
-        $variation7Percent = $budgetProportionateCurrentYear != 0 ? round(($variation7 / $budgetProportionateCurrentYear) * 100, 2) : null;
-
-        $variation9 = round($actualCurrentYearSelectedMonth - $actualPreviousYearSelectedMonth, 2);
-
-        $variation9Percent = $actualPreviousYearSelectedMonth != 0 ? round(($variation9 / $actualPreviousYearSelectedMonth) * 100, 2) : null;
-
-        $mappedValues = collect([
-            'no' => $titleHead->no,
-            'name' => $titleHead->name,
-            'title_head_values' => [
-                'actualPreviousFinancialYearMar' => $actualPreviousFinancialYearMar,
-                'currentYearBudgetGrant' => $currentYearBudgetGrant,
-                'actualPreviousYearSelectedMonth' => $actualPreviousYearSelectedMonth,
-                'budgetProportionateCurrentYear' => $budgetProportionateCurrentYear,
-                'actualCurrentYearSelectedMonth' => $actualCurrentYearSelectedMonth,
-                'variation7' => $variation7,
-                'variation7Percent' => $variation7Percent,
-                'variation9' => $variation9,
-                'variation9Percent' => $variation9Percent,
-            ]
-        ]);
-
-        $title = $mappedValues['no'] ? $mappedValues['no'] . ' - ' . $mappedValues['name'] : $mappedValues['name'];
-        $resultantRow = new Row([
-            Cell::fromValue($title, $firstCellStyle),
-            Cell::fromValue($mappedValues['title_head_values']['actualPreviousFinancialYearMar']),
-            Cell::fromValue($mappedValues['title_head_values']['currentYearBudgetGrant']),
-            Cell::fromValue($mappedValues['title_head_values']['actualPreviousYearSelectedMonth']),
-            Cell::fromValue($mappedValues['title_head_values']['budgetProportionateCurrentYear']),
-            Cell::fromValue($mappedValues['title_head_values']['actualCurrentYearSelectedMonth']),
-            Cell::fromValue($mappedValues['title_head_values']['variation7']),
-            Cell::fromValue($mappedValues['title_head_values']['variation7Percent']),
-            Cell::fromValue($mappedValues['title_head_values']['variation9']),
-            Cell::fromValue($mappedValues['title_head_values']['variation9Percent']),
-            Cell::fromValue('-'),
-        ], $rowStyle);
-
-        return ['row' => $resultantRow, 'mappedValues' => $mappedValues];
     }
 
-    private function calculateAndMapRows(Collection $titleHeads, array $computedFisacalValues, string $financialMonth, Style $rowStyle1, Style $rowStyle2, Style $firstCellStyle): Collection
+    private function setColumnWidths($options): void
     {
-        $mappedOrdinaryWorkExpenses = collect();
-        $titleHeads->each(function ($titleHead, $index)
-        use ($computedFisacalValues, $financialMonth, $mappedOrdinaryWorkExpenses, $rowStyle1, $rowStyle2, $firstCellStyle) {
-            $rowStyle = $index % 2 == 0 ? $rowStyle1 : $rowStyle2;
+        $options->setColumnWidth(22, 1);
+        $options->setColumnWidth(8, 2);
+        $options->setColumnWidth(8, 3);
+        $options->setColumnWidth(8, 4);
+        $options->setColumnWidth(8, 5);
+        $options->setColumnWidth(8, 6);
+        $options->setColumnWidth(8, 7);
+        $options->setColumnWidth(8, 9);
+        $options->setColumnWidth(40, 11);
+    }
+
+    // ============================================================
+    // ROW MAPPING & CALCULATION
+    // ============================================================
+    private function writeDataRows(Collection $titleHeads, string $financialMonth, ReportTableEnum $reportTableEnum): Collection
+    {
+        $mapped = collect();
+        $titleHeads->each(function ($th, $index) use (&$mapped, $financialMonth, $reportTableEnum) {
+            $rowStyle = $index % 2 == 0 ? $this->styles['row1'] : $this->styles['row2'];
             $result = $this->calculateAndMapRow(
-                $titleHead,
-                $computedFisacalValues,
-                $financialMonth,
-                $rowStyle,
-                $firstCellStyle
+                $th, 
+                $financialMonth, $rowStyle, $this->styles['firstCell'], 
+                $reportTableEnum
             );
-
             $this->writer->addRow($result['row']);
-            $mappedOrdinaryWorkExpenses->push($result['mappedValues']);
+            $mapped->push($result['mappedValues']);
         });
+        return $mapped;
+    }
 
-        return $mappedOrdinaryWorkExpenses;
+    private function calculateAndMapRow($titleHead, string $financialMonth, Style $rowStyle, Style $firstCellStyle, ReportTableEnum $reportTableEnum): array
+    {
+        $values = $this->extractTitleHeadValues(
+            $titleHead,
+            $financialMonth,
+            $reportTableEnum
+        );
+        $mappedValues = $this->buildMappedValues(
+            $titleHead, 
+            $values, 
+            $financialMonth,
+            $reportTableEnum
+        );
+        $title = $mappedValues['no'] ? $mappedValues['no'] . ' - ' . $mappedValues['name'] : $mappedValues['name'];
+        
+        $rowsArr = [];
+        $rowsArr[] = Cell::fromValue($title, $firstCellStyle);
+        
+        foreach ($mappedValues['title_head_values'] as $key => $value) {
+            $rowsArr[] = Cell::fromValue($mappedValues['title_head_values'][$key], $this->styles['numericCenter']);
+        }
+        
+        $rowsArr[] = Cell::fromValue('-', $this->styles['numericCenter']);
+
+        $row = new Row($rowsArr, $rowStyle);
+        
+        return ['row' => $row, 'mappedValues' => $mappedValues];
+    }
+
+    private function extractTitleHeadValues($titleHead, string $financialMonth, ReportTableEnum $reportTableEnum): array
+    {
+        return match ($reportTableEnum) {
+            ReportTableEnum::DEMAND_WISE,
+            ReportTableEnum::PU_WISE => [
+                'actualPreviousFinancialYearMar' => $this->getAmount($titleHead->titleHeadValues, 'actual', $this->computedValues['previousFinancialYear'], 'MAR'),
+                'currentYearBudgetGrant' => $this->getAmount($titleHead->titleHeadValues, 'budget-grant', $this->computedValues['currentFinancialYear']),
+                'actualPreviousYearSelectedMonth' => $this->getAmount($titleHead->titleHeadValues, 'actual', $this->computedValues['previousFinancialYear'], $financialMonth),
+                'actualCurrentYearSelectedMonth' => $this->getAmount($titleHead->titleHeadValues, 'actual', $this->computedValues['currentFinancialYear'], $financialMonth),
+            ],
+            ReportTableEnum::MAJOR_EXPENDITURE, ReportTableEnum::CONTROL_OVER_TA_AND_OT => [
+                'currentYearBudgetGrant' => $this->getAmount($titleHead->titleHeadValues, 'budget-grant', $this->computedValues['currentFinancialYear']),
+                'actualPreviousYearSelectedMonth' => $this->getAmount($titleHead->titleHeadValues, 'actual', $this->computedValues['previousFinancialYear'], $financialMonth),
+                'actualCurrentYearSelectedMonth' => $this->getAmount($titleHead->titleHeadValues, 'actual', $this->computedValues['currentFinancialYear'], $financialMonth),
+            ],
+        };
+    }
+
+    private function buildMappedValues($titleHead, array $values, string $financialMonth, ReportTableEnum $reportTableEnum): Collection
+    {
+        return match ($reportTableEnum) {
+            ReportTableEnum::DEMAND_WISE,
+            ReportTableEnum::PU_WISE => collect([
+                'no' => $titleHead->no,
+                'name' => $titleHead->name,
+                'title_head_values' => [
+                    'actualPreviousFinancialYearMar' => $values['actualPreviousFinancialYearMar'],
+                    'currentYearBudgetGrant' => $values['currentYearBudgetGrant'],
+                    'actualPreviousYearSelectedMonth' => $values['actualPreviousYearSelectedMonth'],
+                    'budgetProportionateCurrentYear' => ($budgetProportionate = round(($values['currentYearBudgetGrant'] / 12) * $this->financialYearService->fyMonthIndex($financialMonth), 2)),
+                    'actualCurrentYearSelectedMonth' => $values['actualCurrentYearSelectedMonth'],
+                    'variation7' => ($variation7 = round($values['actualCurrentYearSelectedMonth'] - $budgetProportionate, 2)),
+                    'variation7Percent' => $budgetProportionate != 0 ? round(($variation7 / $budgetProportionate) * 100, 2) : '-',
+                    'variation9' => ($variation9 = round($values['actualCurrentYearSelectedMonth'] - $values['actualPreviousYearSelectedMonth'], 2)),
+                    'variation9Percent' => $values['actualPreviousYearSelectedMonth'] != 0 ? round(($variation9 / $values['actualPreviousYearSelectedMonth']) * 100, 2) : '-',
+                ]
+            ]),
+            ReportTableEnum::MAJOR_EXPENDITURE, ReportTableEnum::CONTROL_OVER_TA_AND_OT => collect([
+                'no' => $titleHead->no,
+                'name' => $titleHead->name,
+                'title_head_values' => [
+                    'currentYearBudgetGrant' => $values['currentYearBudgetGrant'],
+                    'actualPreviousYearSelectedMonth' => $values['actualPreviousYearSelectedMonth'],
+                    'budgetProportionateCurrentYear' => ($budgetProportionate = round(($values['currentYearBudgetGrant'] / 12) * $this->financialYearService->fyMonthIndex($financialMonth), 2)),
+                    'actualCurrentYearSelectedMonth' => $values['actualCurrentYearSelectedMonth'],
+                    'variation6' => ($variation6 = round($values['actualCurrentYearSelectedMonth'] - $values['actualPreviousYearSelectedMonth'], 2)),
+                    'variation7Percent' => $values['actualPreviousYearSelectedMonth'] != 0 ? round(($variation6 / $values['actualPreviousYearSelectedMonth']) * 100, 2) : '-',
+                ]
+            ]),
+        };
+
+
+    }
+
+    private function getAmount(Collection $titleHeadValues, string $type, string $financialYear, string $month = null): float
+    {
+        $query = $titleHeadValues->where('type', $type)->where('financial_year', $financialYear);
+        if ($month) $query = $query->where('month', $month);
+        $record = $query->first();
+        return $record ? (float) $record->amount : 0;
     }
 
     private function mapSummationRow(string $cellHeaderValue, Style $rowStyle, Style $firstCellStyle, Collection $mappedCollection, string $financialMonth): Row
     {
-
-        $first = Cell::fromValue($cellHeaderValue, $firstCellStyle);
-
-        $summedVariation7 = $mappedCollection->sum('title_head_values.variation7');
-        $summedCurrentYearBudgetGrant = $mappedCollection->sum('title_head_values.currentYearBudgetGrant');
-        $calculatedBudgetProportionateCurrentYear = round(($summedCurrentYearBudgetGrant / 12) * $this->financialYearService->fyMonthIndex($financialMonth), 2);
-        $calculatedVariation7Percent = $calculatedBudgetProportionateCurrentYear != 0 ? round(($summedVariation7 / $calculatedBudgetProportionateCurrentYear) * 100, 2) : 0;
-
-        $summedActualCurrentYearSelectedMonth = $mappedCollection->sum('title_head_values.actualCurrentYearSelectedMonth');
-        $summedActualPreviousYearSelectedMonth = $mappedCollection->sum('title_head_values.actualPreviousYearSelectedMonth');
-        $summedVariation9 = round($summedActualCurrentYearSelectedMonth - $summedActualPreviousYearSelectedMonth, 2);
-
-        $calculatedVariation9Percent = $summedActualPreviousYearSelectedMonth != 0 ? round(($summedVariation9 / $summedActualPreviousYearSelectedMonth) * 100, 2) : 0;
+        $sums = $this->calculateSums($mappedCollection, $financialMonth);
 
         $cells = [
-            $first,
-            Cell::fromValue($mappedCollection->sum('title_head_values.actualPreviousFinancialYearMar')),
-            Cell::fromValue($summedCurrentYearBudgetGrant),
-            Cell::fromValue($summedActualPreviousYearSelectedMonth),
-            Cell::fromValue($calculatedBudgetProportionateCurrentYear),
-            Cell::fromValue($summedActualCurrentYearSelectedMonth),
-            Cell::fromValue($summedVariation7),
-            Cell::fromValue($calculatedVariation7Percent),
-            Cell::fromValue($summedVariation9),
-            Cell::fromValue($calculatedVariation9Percent),
-            Cell::fromValue(value: '-'),
+            Cell::fromValue($cellHeaderValue, $firstCellStyle),
+            Cell::fromValue($sums['actualPreviousFinancialYearMar'], $this->styles['numericCenter']),
+            Cell::fromValue($sums['currentYearBudgetGrant'], $this->styles['numericCenter']),
+            Cell::fromValue($sums['actualPreviousYearSelectedMonth'], $this->styles['numericCenter']),
+            Cell::fromValue($sums['budgetProportionateCurrentYear'], $this->styles['numericCenter']),
+            Cell::fromValue($sums['actualCurrentYearSelectedMonth'], $this->styles['numericCenter']),
+            Cell::fromValue($sums['variation7'], $this->styles['numericCenter']),
+            Cell::fromValue($sums['variation7Percent'], $this->styles['numericCenter']),
+            Cell::fromValue($sums['variation9'], $this->styles['numericCenter']),
+            Cell::fromValue($sums['variation9Percent'], $this->styles['numericCenter']),
+            Cell::fromValue('-', $this->styles['numericCenter']),
         ];
 
         return new Row($cells, $rowStyle);
+    }
+
+    private function calculateSums(Collection $mappedCollection, string $financialMonth): array
+    {
+        $sum7 = $mappedCollection->sum('title_head_values.variation7');
+        $sumBudgetGrant = $mappedCollection->sum('title_head_values.currentYearBudgetGrant');
+        $budgetProportionate = round(($sumBudgetGrant / 12) * $this->financialYearService->fyMonthIndex($financialMonth), 2);
+
+        $sumActualCurrent = $mappedCollection->sum('title_head_values.actualCurrentYearSelectedMonth');
+        $sumActualPrevious = $mappedCollection->sum('title_head_values.actualPreviousYearSelectedMonth');
+        $sum9 = round($sumActualCurrent - $sumActualPrevious, 2);
+
+        return [
+            'actualPreviousFinancialYearMar' => $mappedCollection->sum('title_head_values.actualPreviousFinancialYearMar'),
+            'currentYearBudgetGrant' => $sumBudgetGrant,
+            'actualPreviousYearSelectedMonth' => $sumActualPrevious,
+            'budgetProportionateCurrentYear' => $budgetProportionate,
+            'actualCurrentYearSelectedMonth' => $sumActualCurrent,
+            'variation7' => $sum7,
+            'variation7Percent' => $budgetProportionate != 0 ? round(($sum7 / $budgetProportionate) * 100, 2) : 0,
+            'variation9' => $sum9,
+            'variation9Percent' => $sumActualPrevious != 0 ? round(($sum9 / $sumActualPrevious) * 100, 2) : 0,
+        ];
+    }
+
+    // ============================================================
+    // PU WISE SECTION
+    // ============================================================
+    private function preparePUWise(string $financialMonth): void
+    {
+        $this->addEmptyRows(4);
+        $this->writePUWiseHeader();
+
+        $puHeads = $this->titleHeadQueries->getPUWiseOrdinaryWorkExpense(
+            $this->computedValues['currentFinancialYear'],
+            $this->computedValues['previousFinancialYear'],
+            $financialMonth
+        )->sortBy('sort_order', SORT_NATURAL)->values();
+        
+        $groups = $puHeads->groupBy(
+            fn($th) => strtoupper(substr($th->sort_order, 0, 1))
+        );
+        $groupMappedCollections = [];
+        
+        $options = $this->writer->getOptions();
+        $options->mergeCells(0, 25, 10, 25);
+        $options->mergeCells(0, 48, 10, 48);
+        
+        foreach ($groups->keys()->sort()->values()->all() as $groupKey) {
+            $titleHeads = $groups->get($groupKey);
+            
+            if ($groupKey !== 'C') {
+                $this->writer->addRow(Row::fromValues(["Group " . $groupKey], $this->styles['title']));
+                $mapped = $this->writeDataRows($titleHeads, $financialMonth, ReportTableEnum::PU_WISE);
+                $this->writer->addRow($this->mapSummationRow("Total ({$groupKey})", $this->styles['row2'], $this->styles['firstCell'], $mapped, $financialMonth));
+            } else {
+                $mapped = $this->extractMappedValuesOnly($titleHeads, $financialMonth, ReportTableEnum::PU_WISE);
+            }
+            
+            $groupMappedCollections[$groupKey] = $mapped;
+        }
+
+        $this->writeFinalTotals($groupMappedCollections, $financialMonth);
+    }
+
+    private function writePUWiseHeader(): void
+    {
+        $options = $this->writer->getOptions();
+        $this->writer->addRow(Row::fromValues(["PU WISE ORDINARY WORKING EXPENSES (Figures in Crores)"], $this->styles['title']));
+        $options->mergeCells(0, 22, 10, 22);
+
+        $this->writer->addRow(Row::fromValues($this->getHeaders(ReportTableEnum::PU_WISE), $this->styles['header']));
+        $options->mergeCells(6, 23, 7, 23);
+        $options->mergeCells(8, 23, 9, 23);
+
+        $this->writer->addRow(Row::fromValues($this->getAliasRow(ReportTableEnum::PU_WISE), $this->styles['alias']));
+    }
+
+    private function extractMappedValuesOnly(Collection $titleHeads, string $financialMonth, ReportTableEnum $reportTableEnum): Collection
+    {
+        $mapped = collect();
+        $titleHeads->each(function ($th) use (&$mapped, $financialMonth, $reportTableEnum) {
+            $result = $this->calculateAndMapRow($th, $financialMonth, $this->styles['row1'], 
+                $this->styles['firstCell'],
+                $reportTableEnum
+            );
+            $mapped->push($result['mappedValues']);
+        });
+        return $mapped;
+    }
+
+    private function writeFinalTotals(array $groupMappedCollections, string $financialMonth): void
+    {
+        $combinedAB = collect();
+        if (isset($groupMappedCollections['A'])) $combinedAB = $combinedAB->concat($groupMappedCollections['A']);
+        if (isset($groupMappedCollections['B'])) $combinedAB = $combinedAB->concat($groupMappedCollections['B']);
+
+        if ($combinedAB->isNotEmpty()) {
+            $this->writer->addRow($this->mapSummationRow("GROSS TOTAL (A + B)", $this->styles['total'], $this->styles['firstCell'], $combinedAB, $financialMonth));
+        }
+
+        $this->writer->addRow($this->mapSummationRow("CREDITS (C)", $this->styles['total'], $this->styles['firstCell'], $groupMappedCollections['C'], $financialMonth));
+
+        $allCombined = $combinedAB->concat($groupMappedCollections['C'] ?? collect());
+        if ($allCombined->isNotEmpty()) {
+            $this->writer->addRow($this->mapSummationRow("NET TOTAL (A + B - CREDITS)", $this->styles['total'], $this->styles['firstCell'], $allCombined, $financialMonth));
+        }
+    }
+
+    private function addEmptyRows(int $count): void
+    {
+        for ($i = 0; $i < $count; $i++) {
+            $this->writer->addRow(Row::fromValues([]));
+        }
+    }
+
+    public function prepareMajorPUWise(string $financialMonth): void
+    {
+        $this->addEmptyRows(4);
+        $this->writeMajorExpenditurePUHeader();
+
+        $majorPUWithValues = $this->titleHeadQueries->getMajorPUWithValues(
+            $this->computedValues['currentFinancialYear'],
+            $this->computedValues['previousFinancialYear'],
+            $financialMonth
+        );
+
+        $this->writeDataRows($majorPUWithValues, $financialMonth, ReportTableEnum::MAJOR_EXPENDITURE);
+    }
+
+    private function writeMajorExpenditurePUHeader(): void
+    {
+        $options = $this->writer->getOptions();
+        $this->writer->addRow(Row::fromValues(["MAJOR EXPENDITURE PUs (Figures in Crores)"], $this->styles['title']));
+        $options->mergeCells(0, 79, 7, 79);
+
+        $this->writer->addRow(Row::fromValues($this->getHeaders(ReportTableEnum::MAJOR_EXPENDITURE), $this->styles['header']));
+        $this->writer->addRow(Row::fromValues($this->getAliasRow(ReportTableEnum::MAJOR_EXPENDITURE), $this->styles['alias']));
+    }
+
+    
+    public function prepareTAAndOTTable(string $financialMonth): void
+    {
+        $this->addEmptyRows(4);
+        $this->writeTAandOTTableHeader();
+        
+        $tAAndOTWithValues = $this->titleHeadQueries->getTAAndOTWithValues(
+            $this->computedValues['currentFinancialYear'],
+            $this->computedValues['previousFinancialYear'],
+            $financialMonth
+        );
+
+        $this->writeDataRows($tAAndOTWithValues, $financialMonth, ReportTableEnum::CONTROL_OVER_TA_AND_OT);
+
+    }
+
+    private function writeTAandOTTableHeader(): void
+    {
+        $options = $this->writer->getOptions();
+        $this->writer->addRow(Row::fromValues(["Control over TA & OT (Figures in Crores)"], $this->styles['title']));
+        $options->mergeCells(0, 90, 7, 90);
+
+        $this->writer->addRow(Row::fromValues($this->getHeaders(ReportTableEnum::CONTROL_OVER_TA_AND_OT), $this->styles['header']));
+        $this->writer->addRow(Row::fromValues($this->getAliasRow(ReportTableEnum::CONTROL_OVER_TA_AND_OT), $this->styles['alias']));
     }
 }

@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\ReportService;
+use App\Services\ReportReaderService;
 use App\Services\ReportWriterService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -11,7 +11,7 @@ use Spatie\SimpleExcel\SimpleExcelWriter;
 class ReportController extends Controller
 {
     public function __construct(
-        protected ReportService $reportService,
+        protected ReportReaderService $reportReaderService,
         protected ReportWriterService $reportWriterService,
     ) {
     }
@@ -26,7 +26,7 @@ class ReportController extends Controller
         $target = $this->createTempUploadFile($request->file('rar_file'));
 
         try {
-            $this->reportService->uploadRAR(
+            $this->reportReaderService->uploadRAR(
                 $target,
                 $request->input('financial_year'),
                 $request->input('month')
@@ -51,7 +51,7 @@ class ReportController extends Controller
         $target = $this->createTempUploadFile($request->file('bg_file'));
 
         try {
-            $this->reportService->uploadBG(
+            $this->reportReaderService->uploadBG(
                 $target,
                 $request->input('financial_year'),
             );
@@ -89,7 +89,7 @@ class ReportController extends Controller
         $target = $this->createTempUploadFile($request->file('revenue_schedule_file'));
 
         try {
-            $this->reportService->uploadRevenueSchedule(
+            $this->reportReaderService->uploadRevenueSchedule(
                 $target,
                 $request->input(key: 'year'),
                 $request->input('month')
