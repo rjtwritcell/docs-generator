@@ -8,7 +8,7 @@ class TitleHeadValueQueries
     public function upsert(array $datRows) {
         TitleHeadValue::upsert(
         $datRows,
-        ['title_head_id', 'financial_year', 'month', 'type'], // unique keys
+        ['title_head_id', 'financial_year', 'month', 'type', 'pu'], // unique keys
         ['amount', 'updated_at']                      // columns to update
         );
     }

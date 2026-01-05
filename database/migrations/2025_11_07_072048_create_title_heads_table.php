@@ -18,6 +18,7 @@ return new class extends Migration
             $table->string('name')->nullable();
             $table->tinyText('sort_order')->nullable();
             $table->string('notes')->nullable();
+            $table->json('match_keys')->nullable();
             $table->timestamps();
         });
     }

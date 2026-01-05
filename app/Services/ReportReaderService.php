@@ -1,10 +1,12 @@
 <?php
 namespace App\Services;
 
+use App\Models\TitleHead;
 use App\Queries\TitleHeadQueries;
 use App\Queries\TitleHeadValueQueries;
 use DiDom\Document;
 use Exception;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Spatie\SimpleExcel\SimpleExcelReader;
 
@@ -172,7 +174,7 @@ class ReportReaderService
     public function uploadBG(string $file, string $financialYear): void{
         
         $reader = SimpleExcelReader::create($file);
-
+        
         $this->upsertTitleHeadValues(
             $this->readAndPrepareDemandWiseRecordsFromBG($reader, $financialYear)
         );
@@ -189,6 +191,9 @@ class ReportReaderService
             $this->readAndPrepareControllablePUsFromBG($reader, $financialYear)
         );
 
+        $this->upsertTitleHeadValues(
+            $this->readAndPrepareDeptAndPUWiseRecords($reader, $financialYear)
+        );
     
     }
 
@@ -427,6 +432,127 @@ class ReportReaderService
             'created_at' => now(),
             'updated_at' => now(),
         ];
+
+        return $titleHeadValues;
+    }
+
+    public function uploadDeptWiseRAR(
+        string $file, 
+        string $financialYear, 
+        string $month
+    ): void{
+        $reader = SimpleExcelReader::create($file);
+        
+        $rows = $reader->fromSheetName(' DPW_DW_HW_SW_PW ')
+            ->headerOnRow(2)
+            ->getRows();
+
+        $formattedYearMonth = $this->financialYearService->formatMonthWithFinancialYearPart(
+            $financialYear,
+            $month
+        );
+
+        $pUsWeNeedToStore = [
+            'PU - 10 - KMA',
+            'PU - 11 - OT',
+            'PU - 12 - NDA',
+            'PU - 16 - TE',
+            'PU - 26 - Medical Expenses',
+            'PU - 27 - Materials from stock',
+            'PU - 28 - Materials-Dir. purchase',
+            'PU - 32 - CP'
+        ];
+
+        $titleHeads = TitleHead::query()
+            ->where('type', 'dept')
+            ->get();
+
+        $titleHeadValues = $rows
+            ->whereIn('PUCODE', $pUsWeNeedToStore)
+            ->groupBy('PUCODE')
+            ->map(function ($puItems, $puCode) use ($formattedYearMonth, $financialYear, $month, $titleHeads) {
+                return $puItems->groupBy('DEPARTMENTCODE')
+                    ->map(function ($deptItems, $department) use ($puCode, $formattedYearMonth, $financialYear, $month, $titleHeads) {
+
+                        $amount = $deptItems->sum(function ($row) use ($formattedYearMonth, $financialYear, $month, $titleHeads) {
+                            return isset($row[$formattedYearMonth]) ? (float)$row[$formattedYearMonth] : 0;
+                        });
+
+                        $titleHead = $titleHeads->first(function ($t) use ($department) {
+                            return in_array($department, $t['match_keys']);
+                        });
+
+                        $parts = explode(' - ', $puCode);
+                        $puNo = $parts[1] ?? null;
+                        
+                        return [
+                            'title_head_id' => $titleHead['id'],
+                            'amount'        => $amount,
+                            'pu'            => $puNo,
+                            'financial_year' => $financialYear,
+                            'month'         => $month,
+                            'type'          => 'actual'
+                        ];
+
+                    })->values();
+            })->flatten(1)->values()->toArray();
+
+        $this->upsertTitleHeadValues($titleHeadValues);
+    }
+
+
+    private function readAndPrepareDeptAndPUWiseRecords(SimpleExcelReader $reader, string $financialYear) {
+        $titleHeadValues = [];
+        $rows = $reader->fromSheetName('BSPU_WISE ')
+            ->headerOnRow(1)
+            ->getRows();
+        
+       $pUsWeNeedToStore = collect([
+            '10 - KMA',
+            '11 - OT',
+            '12 - NDA',
+            '16 - TE',
+            '26 - Medical',
+            '27 - MSTK',
+            '28 - MDPUR',
+            '32 - CP'
+        ]);
+
+        $titleHeads = TitleHead::query()
+            ->where('type', 'dept')
+            ->get();
+
+        $titleHeadValues = [];
+        $rows
+            ->groupBy('BSPUCODE')
+            ->whereNotIn('SMH', ['10N', 'ALL SMHs'])
+            ->except(['ALL BSPUs'])
+            ->each(function ($deptItems, $deptName) 
+                use($pUsWeNeedToStore, $titleHeads, &$titleHeadValues, $financialYear)  {
+
+                $titleHead = $titleHeads->first(function ($t) use ($deptName) {
+                    return in_array($deptName, $t['match_keys']);
+                });
+                
+                $pUsWeNeedToStore->each(function($titleHeadMatch) 
+                    use($deptItems, $deptName, &$titleHeadValues, $titleHead, $financialYear){
+
+                    $amount = $deptItems->sum($titleHeadMatch);
+                    
+                    $parts = explode(' - ', $titleHeadMatch);
+                    $puNo = $parts[0] ?? null;
+
+                    $titleHeadValues[] = [
+                        'title_head_id' => $titleHead['id'],
+                        'amount'        => $amount,
+                        'pu'            => $puNo,
+                        'financial_year' => $financialYear,
+                        'month'         => '',
+                        'type'          => 'budget-grant'
+                    ];
+
+                });
+            });
 
         return $titleHeadValues;
     }

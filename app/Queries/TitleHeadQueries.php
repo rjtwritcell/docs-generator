@@ -203,4 +203,86 @@ class TitleHeadQueries
             ->orderBy('no')
             ->get();
     }
+
+    public function getPositionOfControllablePUsWithValues(string $currentFinancialYear, string $previousFinancialYear, string $month): Collection
+    {
+        return TitleHead::query()
+            ->with(['titleHeadValues' => function ($query) use ($currentFinancialYear, $previousFinancialYear, $month) {
+                $query->where(function ($q) use ($previousFinancialYear, $month) {
+                    $q->where('type', 'actual')
+                        ->where('financial_year', $previousFinancialYear)
+                        ->where('month', 'MAR');
+                })->orWhere(function ($q) use ($currentFinancialYear, $month) {
+                    $q->where('type', 'budget-grant')
+                        ->where('financial_year', $currentFinancialYear);
+                })->orWhere(function ($q) use ($previousFinancialYear, $month) {
+                    $q->where('type', 'actual')
+                        ->where('financial_year', $previousFinancialYear)
+                        ->where('month', $month);
+                })->orWhere(function ($q) use ($currentFinancialYear, $month) {
+                    $q->where('type', 'actual')
+                        ->where('financial_year', $currentFinancialYear)
+                        ->where('month', $month);
+                });
+            }])
+            ->where('type', 'pu')
+            ->whereHas('reportTables', function ($q) {
+                $q->where('name', ReportTableEnum::POSITION_OF_CONTROLLABLE_PUs->value);
+            })
+            ->orderBy('no')
+            ->get();
+    }
+
+    // TODO Need to work on the query and verify the existing data with the output of the query
+    
+    public function getDeptWiseValues(string $currentFinancialYear, string $previousFinancialYear, string $month): Collection
+    {
+        return TitleHead::query()
+            ->where('type', 'dept')
+            ->with([
+                'reportTables',
+                'titleHeadValues' => function ($query) use ($currentFinancialYear, $previousFinancialYear, $month) {
+
+                $query->where(function ($q) use ($currentFinancialYear, $previousFinancialYear, $month) {
+
+                        // match actual prev year MAR
+                        $q->where(function ($x) use ($previousFinancialYear) {
+                            $x->where('type', 'actual')
+                                ->where('financial_year', $previousFinancialYear)
+                                ->where('month', 'MAR');
+                        })
+
+                        // match actual prev year selected month (allow null/empty)
+                        ->orWhere(function ($x) use ($previousFinancialYear, $month) {
+                            $x->where('type', 'actual')
+                                ->where('financial_year', $previousFinancialYear)
+                                ->where(function ($m) use ($month) {
+                                    $m->where('month', $month)
+                                    ->orWhereNull('month')
+                                    ->orWhere('month', '');
+                                });
+                        })
+
+                        // match budget-grant (usually month = "")
+                        ->orWhere(function ($x) use ($currentFinancialYear) {
+                            $x->where('type', 'budget-grant')
+                                ->where('financial_year', $currentFinancialYear);
+                        })
+
+                        // match actual current year selected month (allow null/empty)
+                        ->orWhere(function ($x) use ($currentFinancialYear, $month) {
+                            $x->where('type', 'actual')
+                                ->where('financial_year', $currentFinancialYear)
+                                ->where(function ($m) use ($month) {
+                                    $m->where('month', $month)
+                                    ->orWhereNull('month')
+                                    ->orWhere('month', '');
+                                });
+                        });
+
+                    });
+            }])
+            ->get();
+    }
+
 }

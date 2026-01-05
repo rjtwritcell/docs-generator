@@ -14,7 +14,12 @@ class TitleHead extends Model
         'type',
         'notes',
         'sort_order',
-        'excel_table'
+        'excel_table',
+        'match_keys'
+    ];
+
+    protected $casts = [
+        'match_keys' => 'array',
     ];
 
     public function reportTables()

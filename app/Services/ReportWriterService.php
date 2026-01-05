@@ -7,6 +7,7 @@ use App\Models\TitleHead;
 use App\Queries\TitleHeadQueries;
 use App\Queries\TitleHeadValueQueries;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use OpenSpout\Writer\XLSX\Writer;
 use OpenSpout\Common\Entity\Style\Style;
@@ -14,11 +15,8 @@ use OpenSpout\Common\Entity\Style\Color;
 use OpenSpout\Common\Entity\Style\Border;
 use OpenSpout\Common\Entity\Style\BorderPart;
 use OpenSpout\Common\Entity\Row;
-use Illuminate\Support\Facades\Response;
 use OpenSpout\Common\Entity\Cell;
 use OpenSpout\Common\Entity\Style\CellAlignment;
-use OpenSpout\Writer\Common\Creator\Style\StyleBuilder;
-use SebastianBergmann\CodeCoverage\Report\Xml\Report;
 
 class ReportWriterService
 {
@@ -47,7 +45,10 @@ class ReportWriterService
             $this->preparePUWise($financialMonth);
             $this->prepareMajorPUWise($financialMonth);
             $this->prepareTAAndOTTable($financialMonth);
+            $this->preparePositionOfControllablePUsTable($financialMonth);
 
+            $this->prepareDepartmentWiseTables($financialMonth);
+            
             $this->writer->close();
         } catch (\Throwable $th) {
             Log::error('Error exporting report: ' . $th->getMessage());
@@ -216,13 +217,41 @@ class ReportWriterService
         $this->writeDemandWiseHeader();
         
         $mapped = $this->writeDataRows($demandWiseExpenses, $financialMonth, ReportTableEnum::DEMAND_WISE);
-        $this->writer->addRow($this->mapSummationRow('Total', $this->styles['row2'], $this->styles['firstCell'], $mapped, $financialMonth));
+        
+        $this->writer->addRow(
+            $this->mapSummationRow(
+                'Total',
+                $this->styles['total'],
+                $this->styles['firstCell'],
+                $mapped,
+                $financialMonth,
+                ReportTableEnum::DEMAND_WISE
+            )
+        );
 
-        $suspenseResult = $this->calculateAndMapRow($suspenseValues, $financialMonth, $this->styles['row1'], $this->styles['firstCell'], ReportTableEnum::DEMAND_WISE);
+        $suspenseResult = 
+        $this->calculateAndMapRow(
+            $suspenseValues, 
+            $financialMonth, 
+            $this->styles['total'], 
+            $this->styles['firstCell'],
+            ReportTableEnum::DEMAND_WISE
+        );
+        
         $mapped->push($suspenseResult['mappedValues']);
+        
         $this->writer->addRow($suspenseResult['row']);
 
-        $this->writer->addRow($this->mapSummationRow('Gross Total', $this->styles['row2'], $this->styles['firstCell'], $mapped, $financialMonth));
+        $this->writer->addRow(
+            $this->mapSummationRow(
+                'Gross Total', 
+                $this->styles['total'], 
+                $this->styles['firstCell'], 
+                $mapped, 
+                $financialMonth, 
+                ReportTableEnum::DEMAND_WISE
+            )
+        );
     }
 
     private function writeDemandWiseHeader(): void
@@ -282,6 +311,32 @@ class ReportWriterService
                 "Variation % (6/3*100)",
                 "Remarks"
             ],
+            ReportTableEnum::POSITION_OF_CONTROLLABLE_PUs => [
+                "PU",
+                "Actual " . $this->computedValues['previousFinancialYear'],
+                "B.G. " . $this->computedValues['currentFinancialYear'],
+                "Actual " . $this->computedValues['previousFinancialYearMonth'],
+                "Actual " . $this->computedValues['currentFinancialYearMonth'],
+                "Variation (5-4)",
+                "Variation % (6/4*100)",
+                "Remarks"
+            ],
+            ReportTableEnum::PU10_KILOMETER_ALLOWANCES,
+            ReportTableEnum::PU11_OVERTIME_ALLOWANCES,
+            ReportTableEnum::PU12_NIGHT_DUTY_ALLOWANCES,
+            ReportTableEnum::PU16_TRAVELLING_ALLOWANCES,
+            ReportTableEnum::PU26_REIMBURSEMENT_OF_MEDICAL_EXPENSES,
+            ReportTableEnum::PU27_STOCK_ITEMS,
+            ReportTableEnum::PU28_DIRECT_PURCHASE,
+            ReportTableEnum::PU32_CONTRACTUAL_PAYMENTS, => [
+                "Department",
+                "B.G. " . $this->computedValues['currentFinancialYear'],
+                "Actual " . $this->computedValues['previousFinancialYearMonth'],
+                "Actual " . $this->computedValues['currentFinancialYearMonth'],
+                "Variation (2-4)",
+                "Variation (5/2*100)",
+                "Remarks"
+            ],
         };
     }
 
@@ -290,7 +345,7 @@ class ReportWriterService
         return match ($reportTableEnum) {
             ReportTableEnum::DEMAND_WISE => [1, 2, 3, 4, 5, 6, 7, "% Variation", 8, "% Variation", 9],
             ReportTableEnum::PU_WISE => [1, 2, 3, 4, 5, 6, 7, "% Variation", 8, "% Variation", 9],
-            ReportTableEnum::MAJOR_EXPENDITURE, ReportTableEnum::CONTROL_OVER_TA_AND_OT => [1, 2, 3, 4, 5, 6, 7, 8],
+            ReportTableEnum::MAJOR_EXPENDITURE, ReportTableEnum::CONTROL_OVER_TA_AND_OT, ReportTableEnum::POSITION_OF_CONTROLLABLE_PUs => [1, 2, 3, 4, 5, 6, 7, 8],
         };
 
     }
@@ -371,6 +426,12 @@ class ReportWriterService
                 'actualPreviousYearSelectedMonth' => $this->getAmount($titleHead->titleHeadValues, 'actual', $this->computedValues['previousFinancialYear'], $financialMonth),
                 'actualCurrentYearSelectedMonth' => $this->getAmount($titleHead->titleHeadValues, 'actual', $this->computedValues['currentFinancialYear'], $financialMonth),
             ],
+            ReportTableEnum::POSITION_OF_CONTROLLABLE_PUs => [
+                'actualPreviousFinancialYearMar' => $this->getAmount($titleHead->titleHeadValues, 'actual', $this->computedValues['previousFinancialYear']),
+                'currentYearBudgetGrant' => $this->getAmount($titleHead->titleHeadValues, 'budget-grant', $this->computedValues['currentFinancialYear']),
+                'actualPreviousYearSelectedMonth' => $this->getAmount($titleHead->titleHeadValues, 'actual', $this->computedValues['previousFinancialYear'], $financialMonth),
+                'actualCurrentYearSelectedMonth' => $this->getAmount($titleHead->titleHeadValues, 'actual', $this->computedValues['currentFinancialYear'], $financialMonth),
+            ],
         };
     }
 
@@ -405,6 +466,18 @@ class ReportWriterService
                     'variation7Percent' => $values['actualPreviousYearSelectedMonth'] != 0 ? round(($variation6 / $values['actualPreviousYearSelectedMonth']) * 100, 2) : '-',
                 ]
             ]),
+            ReportTableEnum::POSITION_OF_CONTROLLABLE_PUs => collect([
+                'no' => $titleHead->no,
+                'name' => $titleHead->name,
+                'title_head_values' => [
+                    'actualPreviousFinancialYearMar' => $values['actualPreviousFinancialYearMar'],
+                    'currentYearBudgetGrant' => $values['currentYearBudgetGrant'],
+                    'actualPreviousYearSelectedMonth' => $values['actualPreviousYearSelectedMonth'],
+                    'actualCurrentYearSelectedMonth' => $values['actualCurrentYearSelectedMonth'],
+                    'variation6' => ($variation6 = round($values['actualCurrentYearSelectedMonth'] - $values['actualPreviousYearSelectedMonth'], 2)),
+                    'variation7Percent' => $values['actualPreviousYearSelectedMonth'] != 0 ? round(($variation6 / $values['actualPreviousYearSelectedMonth']) * 100, 2) : '-',
+                ]
+            ]),
         };
 
 
@@ -418,28 +491,23 @@ class ReportWriterService
         return $record ? (float) $record->amount : 0;
     }
 
-    private function mapSummationRow(string $cellHeaderValue, Style $rowStyle, Style $firstCellStyle, Collection $mappedCollection, string $financialMonth): Row
+    private function mapSummationRow(string $cellHeaderValue, Style $rowStyle, Style $firstCellStyle, Collection $mappedCollection, string $financialMonth, ReportTableEnum $reportTableEnum): Row
     {
-        $sums = $this->calculateSums($mappedCollection, $financialMonth);
+        $sums = $this->calculateSums($mappedCollection, $financialMonth, $reportTableEnum);
 
-        $cells = [
-            Cell::fromValue($cellHeaderValue, $firstCellStyle),
-            Cell::fromValue($sums['actualPreviousFinancialYearMar'], $this->styles['numericCenter']),
-            Cell::fromValue($sums['currentYearBudgetGrant'], $this->styles['numericCenter']),
-            Cell::fromValue($sums['actualPreviousYearSelectedMonth'], $this->styles['numericCenter']),
-            Cell::fromValue($sums['budgetProportionateCurrentYear'], $this->styles['numericCenter']),
-            Cell::fromValue($sums['actualCurrentYearSelectedMonth'], $this->styles['numericCenter']),
-            Cell::fromValue($sums['variation7'], $this->styles['numericCenter']),
-            Cell::fromValue($sums['variation7Percent'], $this->styles['numericCenter']),
-            Cell::fromValue($sums['variation9'], $this->styles['numericCenter']),
-            Cell::fromValue($sums['variation9Percent'], $this->styles['numericCenter']),
-            Cell::fromValue('-', $this->styles['numericCenter']),
-        ];
+        $rowsArr = [];
+        $rowsArr[] = Cell::fromValue($cellHeaderValue, $firstCellStyle);
+        
+        foreach (array_keys($sums) as $key) {
+            $rowsArr[] = Cell::fromValue($sums[$key], $this->styles['numericCenter']);
+        }
 
-        return new Row($cells, $rowStyle);
+        $rowsArr[] = Cell::fromValue('-', $this->styles['numericCenter']);
+
+        return new Row($rowsArr, $rowStyle);
     }
 
-    private function calculateSums(Collection $mappedCollection, string $financialMonth): array
+    private function calculateSums(Collection $mappedCollection, string $financialMonth, ReportTableEnum $reportTableEnum): array
     {
         $sum7 = $mappedCollection->sum('title_head_values.variation7');
         $sumBudgetGrant = $mappedCollection->sum('title_head_values.currentYearBudgetGrant');
@@ -449,17 +517,37 @@ class ReportWriterService
         $sumActualPrevious = $mappedCollection->sum('title_head_values.actualPreviousYearSelectedMonth');
         $sum9 = round($sumActualCurrent - $sumActualPrevious, 2);
 
-        return [
-            'actualPreviousFinancialYearMar' => $mappedCollection->sum('title_head_values.actualPreviousFinancialYearMar'),
-            'currentYearBudgetGrant' => $sumBudgetGrant,
-            'actualPreviousYearSelectedMonth' => $sumActualPrevious,
-            'budgetProportionateCurrentYear' => $budgetProportionate,
-            'actualCurrentYearSelectedMonth' => $sumActualCurrent,
-            'variation7' => $sum7,
-            'variation7Percent' => $budgetProportionate != 0 ? round(($sum7 / $budgetProportionate) * 100, 2) : 0,
-            'variation9' => $sum9,
-            'variation9Percent' => $sumActualPrevious != 0 ? round(($sum9 / $sumActualPrevious) * 100, 2) : 0,
-        ];
+        if($reportTableEnum === ReportTableEnum::POSITION_OF_CONTROLLABLE_PUs) {
+            return [
+                'actualPreviousFinancialYearMar' => $mappedCollection->sum('title_head_values.actualPreviousFinancialYearMar'),
+                'currentYearBudgetGrant' => $sumBudgetGrant,
+                'actualPreviousYearSelectedMonth' => $sumActualPrevious,
+                'actualCurrentYearSelectedMonth' => $sumActualCurrent,
+                'variation' => $sum9,
+                'variationPercent' => $sumActualPrevious != 0 ? round(($sum9 / $sumActualPrevious) * 100, 2) : 0,
+            ];
+        } else if($reportTableEnum === ReportTableEnum::MAJOR_EXPENDITURE || $reportTableEnum === ReportTableEnum::CONTROL_OVER_TA_AND_OT) {
+            return [
+                'currentYearBudgetGrant' => $sumBudgetGrant,
+                'actualPreviousYearSelectedMonth' => $sumActualPrevious,
+                'budgetProportionateCurrentYear' => $budgetProportionate,
+                'actualCurrentYearSelectedMonth' => $sumActualCurrent,
+                'variation' => $sum9,
+                'variationPercent' => $sumActualPrevious != 0 ? round(($sum9 / $sumActualPrevious) * 100, 2) : 0,
+            ];
+        } else {
+            return [
+                'actualPreviousFinancialYearMar' => $mappedCollection->sum('title_head_values.actualPreviousFinancialYearMar'),
+                'currentYearBudgetGrant' => $sumBudgetGrant,
+                'actualPreviousYearSelectedMonth' => $sumActualPrevious,
+                'budgetProportionateCurrentYear' => $budgetProportionate,
+                'actualCurrentYearSelectedMonth' => $sumActualCurrent,
+                'variation7' => $sum7,
+                'variation7Percent' => $budgetProportionate != 0 ? round(($sum7 / $budgetProportionate) * 100, 2) : 0,
+                'variation9' => $sum9,
+                'variation9Percent' => $sumActualPrevious != 0 ? round(($sum9 / $sumActualPrevious) * 100, 2) : 0,
+            ];
+        }
     }
 
     // ============================================================
@@ -491,7 +579,7 @@ class ReportWriterService
             if ($groupKey !== 'C') {
                 $this->writer->addRow(Row::fromValues(["Group " . $groupKey], $this->styles['title']));
                 $mapped = $this->writeDataRows($titleHeads, $financialMonth, ReportTableEnum::PU_WISE);
-                $this->writer->addRow($this->mapSummationRow("Total ({$groupKey})", $this->styles['row2'], $this->styles['firstCell'], $mapped, $financialMonth));
+                $this->writer->addRow($this->mapSummationRow("Total ({$groupKey})", $this->styles['row2'], $this->styles['firstCell'], $mapped, $financialMonth, ReportTableEnum::PU_WISE));
             } else {
                 $mapped = $this->extractMappedValuesOnly($titleHeads, $financialMonth, ReportTableEnum::PU_WISE);
             }
@@ -499,7 +587,7 @@ class ReportWriterService
             $groupMappedCollections[$groupKey] = $mapped;
         }
 
-        $this->writeFinalTotals($groupMappedCollections, $financialMonth);
+        $this->writeFinalTotals($groupMappedCollections, $financialMonth, ReportTableEnum::PU_WISE);
     }
 
     private function writePUWiseHeader(): void
@@ -528,21 +616,22 @@ class ReportWriterService
         return $mapped;
     }
 
-    private function writeFinalTotals(array $groupMappedCollections, string $financialMonth): void
+    private function writeFinalTotals(array $groupMappedCollections, string $financialMonth, ReportTableEnum $reportTableEnum): void
     {
         $combinedAB = collect();
         if (isset($groupMappedCollections['A'])) $combinedAB = $combinedAB->concat($groupMappedCollections['A']);
         if (isset($groupMappedCollections['B'])) $combinedAB = $combinedAB->concat($groupMappedCollections['B']);
 
         if ($combinedAB->isNotEmpty()) {
-            $this->writer->addRow($this->mapSummationRow("GROSS TOTAL (A + B)", $this->styles['total'], $this->styles['firstCell'], $combinedAB, $financialMonth));
+            $this->writer->addRow(
+                $this->mapSummationRow("GROSS TOTAL (A + B)", $this->styles['total'], $this->styles['firstCell'], $combinedAB, $financialMonth, $reportTableEnum));
         }
 
-        $this->writer->addRow($this->mapSummationRow("CREDITS (C)", $this->styles['total'], $this->styles['firstCell'], $groupMappedCollections['C'], $financialMonth));
+        $this->writer->addRow($this->mapSummationRow("CREDITS (C)", $this->styles['total'], $this->styles['firstCell'], $groupMappedCollections['C'], $financialMonth, $reportTableEnum));
 
         $allCombined = $combinedAB->concat($groupMappedCollections['C'] ?? collect());
         if ($allCombined->isNotEmpty()) {
-            $this->writer->addRow($this->mapSummationRow("NET TOTAL (A + B - CREDITS)", $this->styles['total'], $this->styles['firstCell'], $allCombined, $financialMonth));
+            $this->writer->addRow($this->mapSummationRow("NET TOTAL (A + B - CREDITS)", $this->styles['total'], $this->styles['firstCell'], $allCombined, $financialMonth, $reportTableEnum));
         }
     }
 
@@ -564,7 +653,18 @@ class ReportWriterService
             $financialMonth
         );
 
-        $this->writeDataRows($majorPUWithValues, $financialMonth, ReportTableEnum::MAJOR_EXPENDITURE);
+        $mapped = $this->writeDataRows($majorPUWithValues, $financialMonth, ReportTableEnum::MAJOR_EXPENDITURE);
+
+        $this->writer->addRow(
+            $this->mapSummationRow(
+                'Total', 
+                $this->styles['total'], 
+                $this->styles['firstCell'], 
+                $mapped, 
+                $financialMonth, 
+                ReportTableEnum::MAJOR_EXPENDITURE
+            )
+        );
     }
 
     private function writeMajorExpenditurePUHeader(): void
@@ -589,15 +689,122 @@ class ReportWriterService
             $financialMonth
         );
 
-        $this->writeDataRows($tAAndOTWithValues, $financialMonth, ReportTableEnum::CONTROL_OVER_TA_AND_OT);
+        $mapped = $this->writeDataRows(
+            $tAAndOTWithValues,
+            $financialMonth,
+            ReportTableEnum::CONTROL_OVER_TA_AND_OT
+        );
 
+        $this->writer->addRow(
+            $this->mapSummationRow(
+                'Total', 
+                $this->styles['total'], 
+                $this->styles['firstCell'], 
+                $mapped, 
+                $financialMonth, 
+                ReportTableEnum::CONTROL_OVER_TA_AND_OT
+            )
+        );
     }
 
     private function writeTAandOTTableHeader(): void
     {
         $options = $this->writer->getOptions();
-        $this->writer->addRow(Row::fromValues(["Control over TA & OT (Figures in Crores)"], $this->styles['title']));
-        $options->mergeCells(0, 90, 7, 90);
+        $this->writer->addRow(Row::fromValues(["Control over TA & OT (Figures in Crores)"],
+        $this->styles['title']));
+        $options->mergeCells(0,
+        91, 7, 91);
+
+        $this->writer->addRow(Row::fromValues($this->getHeaders(ReportTableEnum::CONTROL_OVER_TA_AND_OT), $this->styles['header']));
+        $this->writer->addRow(Row::fromValues($this->getAliasRow(ReportTableEnum::CONTROL_OVER_TA_AND_OT), $this->styles['alias']));
+    }
+    
+    public function preparePositionOfControllablePUsTable(string $financialMonth): void
+    {
+        $this->addEmptyRows(count: 4);
+        $this->writePositionOfControllablePUsTableHeader();
+        
+        $titleHeadValues = $this->titleHeadQueries->getPositionOfControllablePUsWithValues(
+            $this->computedValues['currentFinancialYear'],
+            $this->computedValues['previousFinancialYear'],
+            $financialMonth
+        );
+
+        $mapped = $this->writeDataRows($titleHeadValues, $financialMonth, ReportTableEnum::POSITION_OF_CONTROLLABLE_PUs);
+        
+        $this->writer->addRow(
+            $this->mapSummationRow(
+                'Total', 
+                $this->styles['total'], 
+                $this->styles['firstCell'], 
+                $mapped, 
+                $financialMonth, 
+                ReportTableEnum::POSITION_OF_CONTROLLABLE_PUs
+            )
+        );
+
+    }
+
+    private function writePositionOfControllablePUsTableHeader(): void
+    {
+        $options = $this->writer->getOptions();
+        $this->writer->addRow(Row::fromValues(["Position of Controllable PUs (Figures in Crores)"], $this->styles['title']));
+        
+        $options->mergeCells(0, 101, 7, 101);
+
+        $this->writer->addRow(Row::fromValues($this->getHeaders(ReportTableEnum::POSITION_OF_CONTROLLABLE_PUs), $this->styles['header']));
+        $this->writer->addRow(Row::fromValues($this->getAliasRow(ReportTableEnum::POSITION_OF_CONTROLLABLE_PUs), $this->styles['alias']));
+    }
+
+    private function prepareDepartmentWiseTables(string $financialMonth): void
+    {
+        DB::enableQueryLog();
+
+        // $data = $this->titleHeadQueries->getDeptWiseValues(
+        //     $this->computedValues['currentFinancialYear'],
+        //     $this->computedValues['previousFinancialYear'],
+        //     $financialMonth
+        // )->flatMap(function ($dept) {
+        //     return collect($dept->titleHeadValues)->map(function ($value) use ($dept) {
+        //         return [
+        //             'id' => $value->id,
+        //             'title_head_id' => $value->title_head_id,
+        //             'title_head_name' => $dept->name,
+        //             'financial_year' => $value->financial_year,
+        //             'type' => $value->type,
+        //             'pu' => $value->pu,
+        //             'month' => $value->month,
+        //             'amount' => $value->amount,
+        //             'created_at' => $value->created_at,
+        //             'updated_at' => $value->updated_at,
+        //         ];
+        //     });
+        // })->groupBy('pu');
+
+        $data = $this->titleHeadQueries->getDeptWiseValues(
+            $this->computedValues['currentFinancialYear'],
+            $this->computedValues['previousFinancialYear'],
+            $financialMonth
+        );
+        
+        // $data->each(function ($items, $pu) {
+        //     $this->addEmptyRows(count: 4);
+            
+        //     Log::info("PU: " . $pu);
+        //     $items->each(function ($item) {
+        //         Log::info($item);
+        //     });
+        // });
+        Log::info($data);
+    }
+
+    private function writeDeptWiseHeader(string $puNo, int $lineNo): void
+    {
+        $options = $this->writer->getOptions();
+        $this->writer->addRow(Row::fromValues(["PU No. " . $puNo . " (Figures in Thousands)"],
+        $this->styles['title']));
+
+        $options->mergeCells(0,$lineNo, 7, 91);
 
         $this->writer->addRow(Row::fromValues($this->getHeaders(ReportTableEnum::CONTROL_OVER_TA_AND_OT), $this->styles['header']));
         $this->writer->addRow(Row::fromValues($this->getAliasRow(ReportTableEnum::CONTROL_OVER_TA_AND_OT), $this->styles['alias']));

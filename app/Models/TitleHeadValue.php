@@ -11,6 +11,9 @@ class TitleHeadValue extends Model
         'financial_year',
         'type',
         'month',
-        'amount'
+        'amount',
+        'pu'
     ];
+
+    // either titlle head value or many to many table...
 }

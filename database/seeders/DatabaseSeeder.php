@@ -17,7 +17,8 @@ class DatabaseSeeder extends Seeder
         
         $this->call([
             ReportTableSeeder::class,
-            TitleHeadSeeder::class
+            TitleHeadSeeder::class,
+            DepartmentSeeder::class,
         ]);
     }
 }

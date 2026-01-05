@@ -82,4 +82,27 @@ class FinancialYearService
     {
         return $start . '-' . substr((string)$end, -2);
     }
+
+    public function formatMonthWithFinancialYearPart(string $financialYear, string $month): string
+    {
+        // financialYear = "2024-25"
+        if (!preg_match('/^(\d{4})-(\d{2})$/', $financialYear, $m)) {
+            throw new InvalidArgumentException("Invalid financial year format: $financialYear");
+        }
+
+        $startYear = (int)$m[1];       // 2024
+        $endYear   = (int)($m[1] + 1); // 2025
+
+        $short = strtoupper(substr(trim($month), 0, 3)); // Normalize to JAN/FEB/...
+
+        // Determine Indian FY year-part
+        $fyIndex = $this->fyMonthIndex($short);
+
+        // APR–DEC (index 1–9) -> start year
+        // JAN–MAR (index 10–12) -> end year
+        $yearPart = ($fyIndex <= 9) ? $startYear : $endYear;
+
+        return $short . ' ' . $yearPart; // e.g., "OCT 2024"
+    }
+
 }

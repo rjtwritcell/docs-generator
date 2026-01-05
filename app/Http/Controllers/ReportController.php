@@ -105,4 +105,32 @@ class ReportController extends Controller
 
         return to_route('home')->with('success', 'Revenue Schedule Report uploaded successfully.');
     }
+
+    public function uploadDeptWiseRAR(Request $request)
+    {
+        $request->validate([
+            'dept_wise_rar_file' => 'required|file',
+            'financial_year' => 'required|string',
+            'month' => 'required|string',
+        ]);
+
+        $target = $this->createTempUploadFile($request->file('dept_wise_rar_file'));
+
+        try {
+            $this->reportReaderService->uploadDeptWiseRAR(
+                $target,
+                $request->input('financial_year'),
+                $request->input('month')
+            );
+        } catch( \Exception $e) {
+            // Handle exception if needed
+            Log::error('Error uploading Department Wise RAR report: ' . $e->getMessage());
+            throw $e;
+        }
+         finally {
+            $this->cleanupTempFile($target);
+        }
+
+        return to_route('home')->with('success', 'Department Wise RAR Report uploaded successfully.');
+    }
 }

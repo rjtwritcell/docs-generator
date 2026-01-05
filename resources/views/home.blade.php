@@ -235,6 +235,84 @@
                     </div>
                 </div>
 
+                <!-- Department wise RAR Upload Card -->
+                <div class="relative bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden">
+                    <div class="p-6">
+                        <div class="absolute top-0 right-0 p-4">
+                            <div class="h-8 w-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
+                                <svg class="w-5 h-5 text-blue-600 dark:text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V7a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="mt-8">
+                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">Department wise RAR File</h3>
+                            <p class="text-gray-600 dark:text-gray-400 text-sm mb-3">Upload your Department wise RAR excel file</p>
+                            <form action="{{ route('reports.upload.dept-wise-rar') }}" method="POST" enctype="multipart/form-data" class="block">
+                                @csrf
+
+                                <!-- financial year select -->
+                                <label class="block text-sm text-gray-700 dark:text-gray-300 mb-2">
+                                    Financial Year
+                                    <select name="financial_year" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
+                                        <option value="">Select year</option>
+                                        @foreach($financialYears as $fy)
+                                            <option value="{{ $fy }}" {{ old('financial_year')==$fy ? 'selected' : '' }}>{{ $fy }}</option>
+                                        @endforeach
+                                    </select>
+                                </label>
+                                @error('financial_year')
+                                    <div class="text-xs text-red-600 mb-2">{{ $message }}</div>
+                                @enderror
+
+                                <!-- month select -->
+                                <label class="block text-sm text-gray-700 dark:text-gray-300 mb-2">
+                                    Month
+                                    <select name="month" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
+                                        <option value="">Select month</option>
+                                        @foreach($months as $m)
+                                            <option value="{{ $m }}" {{ old('month')==$m ? 'selected' : '' }}>{{ $m }}</option>
+                                        @endforeach
+                                    </select>
+                                </label>
+                                @error('month')
+                                    <div class="text-xs text-red-600 mb-2">{{ $message }}</div>
+                                @enderror
+
+                                <!-- file input -->
+                                <label class="relative group cursor-pointer block">
+                                    <input type="file" name="dept_wise_rar_file" accept=".xlsx,.xls" class="hidden" id="dept-wise-rar-file"/>
+                                    <div class="flex items-center justify-center px-6 py-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg group-hover:border-blue-500 dark:group-hover:border-blue-400 transition-colors">
+                                        <span class="text-sm text-gray-600 dark:text-gray-400 group-hover:text-blue-500 dark:group-hover:text-blue-400">
+                                            Choose file
+                                        </span>
+                                    </div>
+                                </label>
+
+                                <div class="mt-3 text-sm text-gray-700 dark:text-gray-300" id="dept-wise-rar-file-name">
+                                    @if(session('dept_wise_rar_filename'))
+                                        Selected: {{ session('dept_wise_rar_filename') }}
+                                    @else
+                                        No file chosen
+                                    @endif
+                                </div>
+
+                                @error('dept_wise_rar_file')
+                                    <div class="mt-2 text-xs text-red-600">{{ $message }}</div>
+                                @enderror
+
+                                <button type="submit" class="mt-4 w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
+                                    Upload
+                                </button>
+
+                                @if(session('dept_wise_rar_status'))
+                                    <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ session('dept_wise_rar_status') }}</div>
+                                @endif
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Revenue Schedule Upload Card -->
                 <div class="relative bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden">
                     <div class="p-6">
@@ -362,7 +440,7 @@
                                  <button type="submit" class="mt-6 w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
                                      Generate Document
                                      <svg class="ml-2 -mr-1 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/>
                                      </svg>
                                  </button>
                              </form>
@@ -379,6 +457,7 @@
                     { inputId: 'rar-file', nameId: 'rar-file-name' },
                     { inputId: 'bg-file', nameId: 'bg-file-name' },
                     { inputId: 'revenue-schedule-file', nameId: 'revenue-schedule-file-name' },
+                    { inputId: 'dept-wise-rar-file', nameId: 'dept-wise-rar-file-name' },
                 ];
 
                 map.forEach(({ inputId, nameId }) => {

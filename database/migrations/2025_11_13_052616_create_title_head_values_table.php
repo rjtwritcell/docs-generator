@@ -17,11 +17,18 @@ return new class extends Migration
             $table->foreignIdFor(TitleHead::class)->constrained()->onDelete('cascade');
             $table->string('financial_year');
             $table->enum('type', ['actual', 'budget-grant']);
+            $table->string('pu')->default('');
             $table->string('month')->default('');
             $table->string('amount');
             $table->timestamps();
 
-            $table->unique(['title_head_id', 'financial_year', 'month', 'type'], 'th_t_fy_m_t');
+            $table->unique([
+                'title_head_id', 
+                'financial_year', 
+                'month', 
+                'type', 
+                'pu'
+            ], 'th_t_fy_m_t_pu');
 
         });
     }
