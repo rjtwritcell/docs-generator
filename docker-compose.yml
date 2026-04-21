@@ -9,6 +9,7 @@ services:
       - ./.env:/var/www/.env
       - ./storage:/var/www/storage
       - ./bootstrap/cache:/var/www/bootstrap/cache
+      - public_assets:/var/www/public
     networks:
       - docs_network
     depends_on:
@@ -41,7 +42,7 @@ services:
     ports:
       - "8181:80"
     volumes:
-      - ./public:/var/www/public
+      - public_assets:/var/www/public:ro
       - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf
     networks:
       - docs_network
@@ -85,4 +86,6 @@ networks:
 
 volumes:
   db_data:
+    driver: local
+  public_assets:
     driver: local
