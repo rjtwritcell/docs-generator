@@ -6,6 +6,7 @@ services:
     container_name: docs_app
     restart: unless-stopped
     volumes:
+      - ./.env:/var/www/.env
       - ./storage:/var/www/storage
       - ./bootstrap/cache:/var/www/bootstrap/cache
     networks:
@@ -23,6 +24,7 @@ services:
     restart: unless-stopped
     command: ["php", "artisan", "queue:work", "--sleep=3", "--tries=3", "--max-time=3600"]
     volumes:
+      - ./.env:/var/www/.env
       - ./storage:/var/www/storage
       - ./bootstrap/cache:/var/www/bootstrap/cache
     networks:
