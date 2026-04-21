@@ -11,7 +11,6 @@ until php -r "new PDO('mysql:host=${DB_HOST};port=${DB_PORT};dbname=${DB_DATABAS
 done
 echo "MySQL is ready."
 
-php artisan migrate --force
 php artisan config:cache
 php artisan route:cache
 php artisan view:cache
