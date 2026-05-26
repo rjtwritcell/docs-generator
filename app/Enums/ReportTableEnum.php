@@ -49,4 +49,17 @@ enum ReportTableEnum: string
 
         return $numbers;
     }
+
+    public static function puTableMap(): array
+    {
+        $map = [];
+
+        foreach (self::cases() as $case) {
+            if (preg_match('/^PU(\d+)_/', $case->name, $matches)) {
+                $map[(int) $matches[1]] = $case;
+            }
+        }
+
+        return $map;
+    }
 }

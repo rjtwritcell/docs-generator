@@ -235,27 +235,34 @@ class TitleHeadQueries
 
     // TODO Need to work on the query and verify the existing data with the output of the query
     
-    public function getDeptWiseValues(string $currentFinancialYear, string $previousFinancialYear, string $month): Collection
+    public function getDeptWiseValues(
+        string $currentFinancialYear, 
+        string $previousFinancialYear, 
+        string $month,
+        int $puNO
+    ): Collection
     {
         return TitleHead::query()
             ->where('type', 'dept')
             ->with([
                 'reportTables',
-                'titleHeadValues' => function ($query) use ($currentFinancialYear, $previousFinancialYear, $month) {
+                'titleHeadValues' => function ($query) use ($currentFinancialYear, $previousFinancialYear, $month, $puNO) {
 
-                $query->where(function ($q) use ($currentFinancialYear, $previousFinancialYear, $month) {
+                $query->where(function ($q) use ($currentFinancialYear, $previousFinancialYear, $month, $puNO) {
 
                         // match actual prev year MAR
-                        $q->where(function ($x) use ($previousFinancialYear) {
+                        $q->where(function ($x) use ($previousFinancialYear, $puNO) {
                             $x->where('type', 'actual')
                                 ->where('financial_year', $previousFinancialYear)
-                                ->where('month', 'MAR');
+                                ->where('month', 'MAR')
+                                ->where('pu', $puNO);
                         })
 
                         // match actual prev year selected month (allow null/empty)
-                        ->orWhere(function ($x) use ($previousFinancialYear, $month) {
+                        ->orWhere(function ($x) use ($previousFinancialYear, $month, $puNO) {
                             $x->where('type', 'actual')
                                 ->where('financial_year', $previousFinancialYear)
+                                ->where('pu', $puNO)
                                 ->where(function ($m) use ($month) {
                                     $m->where('month', $month)
                                     ->orWhereNull('month')
@@ -264,15 +271,17 @@ class TitleHeadQueries
                         })
 
                         // match budget-grant (usually month = "")
-                        ->orWhere(function ($x) use ($currentFinancialYear) {
+                        ->orWhere(function ($x) use ($currentFinancialYear, $puNO) {
                             $x->where('type', 'budget-grant')
-                                ->where('financial_year', $currentFinancialYear);
+                                ->where('financial_year', $currentFinancialYear)
+                                ->where('pu', $puNO);
                         })
 
                         // match actual current year selected month (allow null/empty)
-                        ->orWhere(function ($x) use ($currentFinancialYear, $month) {
+                        ->orWhere(function ($x) use ($currentFinancialYear, $month, $puNO) {
                             $x->where('type', 'actual')
                                 ->where('financial_year', $currentFinancialYear)
+                                ->where('pu', $puNO)
                                 ->where(function ($m) use ($month) {
                                     $m->where('month', $month)
                                     ->orWhereNull('month')

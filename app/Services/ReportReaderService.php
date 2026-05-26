@@ -122,7 +122,7 @@ class ReportReaderService
                     ->where('PU_CODE', '99')
                     ->first();
 
-                $amount = $pu99 + round(($row['TO_GROSS'] / 10000000), 2);
+                $amount = $pu99 + round((optional($row)['TO_GROSS'] ?? 0) / 10000000, 2);
                
             } else if($result) {
                 $amount = round($result['\'TOTAL\''] / 10000, 2);
